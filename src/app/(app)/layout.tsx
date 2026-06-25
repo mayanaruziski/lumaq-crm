@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useProfile } from '@/hooks/useProfile'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Kanban, CheckSquare, CalendarDays,
@@ -48,13 +47,31 @@ const NAV_CONSULTOR = [
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { profile, loading, isSupervisora } = useProfile()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [isSupervisora, setIsSupervisora] = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) router.push('/')
-    })
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/'); return }
+      
+      try {
+        const { data } = await supabase
+          .from('perfis')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (data) {
+          setIsSupervisora(data.role === 'supervisora')
+        }
+      } catch {
+        setIsSupervisora(true)
+      }
+      setLoading(false)
+    }
+    init()
   }, [router])
 
   async function handleLogout() {
@@ -125,7 +142,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </>
   )
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-400">Carregando...</div></div>
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-gray-400">Carregando...</div>
+    </div>
+  )
 
   return (
     <div className="flex h-screen overflow-hidden">
