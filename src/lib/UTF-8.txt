@@ -1,4 +1,4 @@
-﻿import { type ClassValue, clsx } from 'clsx'
+import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { format, parseISO, isValid } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -25,16 +25,15 @@ export function getInitials(name: string): string {
   return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
 
-export type StatusCliente = string
-export type StatusTarefa = string
-export type Prioridade = string
+export const STATUS_KANBAN = ['Lead recebido','Primeiro atendimento','Medida tecnica','Desenvolvimento de projeto','Apresentacao','Negociacao','Fechado','Conferencia final','Liberacao para producao','Producao','Montagem','Entregue']
+export const ORIGENS_LEAD = ['Instagram','Facebook','Google','Indicacao','Showroom','WhatsApp','Outros']
+export const TIPOS_TAREFA = ['Medida','Desenvolvimento de projeto','Apresentacao','Negociacao','Conferencia final','Liberacao para producao','Documentacao','Pos-venda','Financeiro','Reuniao','Treinamento']
+export const TIPOS_EVENTO = ['Visita','Medida','Apresentacao','Reuniao','Conferencia final','Liberacao','Outro']
+export const TIPOS_DOCUMENTO = ['Contrato','Projeto PDF','Renderizacao','Medidas','Conferencia final','Comprovante','Foto','Outro']
 
 export function statusClienteColor(s: string): string { return 'bg-gray-100 text-gray-700' }
 export function statusTarefaColor(s: string): string { return 'bg-gray-100 text-gray-600' }
 export function prioridadeColor(p: string): string { return 'bg-gray-100 text-gray-600' }
-
-export const STATUS_KANBAN = ['Lead recebido','Primeiro atendimento','Medida tecnica','Desenvolvimento de projeto','Apresentacao','Negociacao','Fechado','Conferencia final','Liberacao para producao','Producao','Montagem','Entregue']
-export const ORIGENS_LEAD = ['Instagram','Facebook','Google','Indicacao','Showroom','WhatsApp','Outros']
-export const TIPOS_TAREFA = ['Medida','Apresentacao','Negociacao','Conferencia final','Liberacao para producao','Documentacao','Reuniao','Treinamento']
-export const TIPOS_EVENTO = ['Visita','Medida','Apresentacao','Reuniao','Conferencia final','Liberacao','Outro']
-export const TIPOS_DOCUMENTO = ['Contrato','Projeto PDF','Medidas','Comprovante','Foto','Outro']
+export type StatusCliente = string
+export type StatusTarefa = string
+export type Prioridade = string
