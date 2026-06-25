@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { cn } from '@/lib/utils'
+
 import {
   LayoutDashboard, Users, Kanban, CheckSquare, CalendarDays,
   Calendar, Trophy, BarChart3, UserPlus, Bell, LogOut, Menu
@@ -22,9 +22,9 @@ const NAV_SUPERVISORA = [
   ]},
   { label: 'Resultados', items: [
     { href: '/fechamentos', icon: Trophy, label: 'Fechamentos' },
-    { href: '/relatorios', icon: BarChart3, label: 'Relatórios' },
+    { href: '/relatorios', icon: BarChart3, label: 'RelatÃ³rios' },
   ]},
-  { label: 'Administração', items: [
+  { label: 'AdministraÃ§Ã£o', items: [
     { href: '/consultores', icon: UserPlus, label: 'Consultores' },
   ]},
 ]
@@ -111,12 +111,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    'flex items-center gap-2.5 px-4 py-2.5 text-sm transition-all border-l-[3px]',
-                    active
-                      ? 'text-white bg-[#C8232B]/15 border-[#C8232B]'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5 border-transparent'
-                  )}
+                  className={active ? 'flex items-center gap-2.5 px-4 py-2.5 text-sm transition-all border-l-[3px] text-white bg-[#C8232B]/15 border-[#C8232B]' : 'flex items-center gap-2.5 px-4 py-2.5 text-sm transition-all border-l-[3px] text-gray-400 hover:text-white hover:bg-white/5 border-transparent'}
                 >
                   <Icon size={16} />
                   <span>{item.label}</span>
@@ -129,7 +124,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="p-3 border-t border-gray-800">
         <div className="px-3 py-2 text-xs text-gray-500 mb-1">
-          {isSupervisora ? '👑 Supervisora' : '👤 Consultor'}
+          {isSupervisora ? 'ðŸ‘‘ Supervisora' : 'ðŸ‘¤ Consultor'}
         </div>
         <button
           onClick={handleLogout}
