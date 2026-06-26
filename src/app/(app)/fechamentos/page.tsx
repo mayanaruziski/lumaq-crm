@@ -27,7 +27,7 @@ const MESES = [
   { value: 'todos', label: 'Todos os meses' },
 ]
 
-const EMPTY = { cliente_id: '', consultor_id: '', data_fechamento: new Date().toISOString().split('T')[0], valor: 0, percentual_comissao: 6, observacoes: '' }
+const EMPTY = { cliente_id: '', consultor_id: '', data_fechamento: new Date().toISOString().split('T')[0], valor: '', percentual_comissao: 6, observacoes: '' }
 
 export default function FechamentosPage() {
   const mesAtual = new Date().toISOString().slice(0, 7)
@@ -235,7 +235,7 @@ export default function FechamentosPage() {
                 </div>
                 <div>
                   <label className="label">Valor (R$)</label>
-                  <input type="number" className="input" value={form.valor} onChange={e => upd('valor', parseFloat(e.target.value))} min={0} />
+                  <input type="number" className="input" value={form.valor} onChange={e => upd('valor', parseFloat(e.target.value))} min={0} step='0.01' />
                 </div>
                 <div>
                   <label className="label">% Comissao</label>
@@ -265,3 +265,4 @@ export default function FechamentosPage() {
     </div>
   )
 }
+
