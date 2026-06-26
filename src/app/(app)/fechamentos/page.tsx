@@ -1,26 +1,51 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatDate, getInitials, currentMonth } from '@/lib/utils'
-import type { Fechamento, Cliente, Consultor } from '@/types'
-import { Plus, X, Download, Trophy, TrendingUp } from 'lucide-react'
+import { Plus, X, Download, Trophy } from 'lucide-react'
 
-const EMPTY: Partial<Fechamento> = { cliente_id: '', consultor_id: '', data_fechamento: new Date().toISOString().split('T')[0], valor: 0, percentual_comissao: 6, observacoes: '' }
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+}
+
+function getInitials(name: string) {
+  return name.split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()
+}
+
+const MESES_2026 = [
+  { value: '2026-01', label: 'Janeiro 2026' },
+  { value: '2026-02', label: 'Fevereiro 2026' },
+  { value: '2026-03', label: 'Marco 2026' },
+  { value: '2026-04', label: 'Abril 2026' },
+  { value: '2026-05', label: 'Maio 2026' },
+  { value: '2026-06', label: 'Junho 2026' },
+  { value: '2026-07', label: 'Julho 2026' },
+  { value: '2026-08', label: 'Agosto 2026' },
+  { value: '2026-09', label: 'Setembro 2026' },
+  { value: '2026-10', label: 'Outubro 2026' },
+  { value: '2026-11', label: 'Novembro 2026' },
+  { value: '2026-12', label: 'Dezembro 2026' },
+  { value: 'todos', label: 'Todos os meses' },
+]
+
+const EMPTY = { cliente_id: '', consultor_id: '', data_fechamento: new Date().toISOString().split('T')[0], valor: 0, percentual_comissao: 6, observacoes: '' }
 
 export default function FechamentosPage() {
-  const [fechamentos, setFechamentos] = useState<Fechamento[]>([])
-  const [clientes, setClientes] = useState<Cliente[]>([])
-  const [consultores, setConsultores] = useState<Consultor[]>([])
-  const [mesRef, setMesRef] = useState(currentMonth())
+  const mesAtual = new Date().toISOString().slice(0, 7)
+  const [mesRef, setMesRef] = useState(mesAtual)
+  const [fechamentos, setFechamentos] = useState<any[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
+  const [consultores, setConsultores] = useState<any[]>([])
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState<Partial<Fechamento>>(EMPTY)
+  const [form, setForm] = useState<any>(EMPTY)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadData() }, [mesRef])
 
   async function loadData() {
+    let query = supabase.from('fechamentos').select('*, cliente:clientes(nome), consultor:consultores(nome)').order('data_fechamento', { ascending: false })
+    if (mesRef !== 'todos') query = query.eq('mes_referencia', mesRef)
     const [fRes, cliRes, coRes] = await Promise.all([
-      supabase.from('fechamentos').select('*, cliente:clientes(nome), consultor:consultores(nome)').eq('mes_referencia', mesRef).order('data_fechamento', { ascending: false }),
+      query,
       supabase.from('clientes').select('id, nome').order('nome'),
       supabase.from('consultores').select('id, nome, meta_mensal').eq('ativo', true).order('nome'),
     ])
@@ -29,19 +54,15 @@ export default function FechamentosPage() {
     setConsultores(coRes.data ?? [])
   }
 
-  const totalValor = fechamentos.reduce((s, f) => s + f.valor, 0)
+  const totalValor = fechamentos.reduce((s, f) => s + (f.valor ?? 0), 0)
   const totalComissao = fechamentos.reduce((s, f) => s + (f.valor_comissao ?? 0), 0)
   const ticketMedio = fechamentos.length > 0 ? totalValor / fechamentos.length : 0
 
-  // Ranking
-  const rankingMap: Record<string, { nome: string; valor: number; qtd: number; meta: number }> = {}
+  const rankingMap: Record<string, any> = {}
   fechamentos.forEach(f => {
     if (!f.consultor_id) return
-    if (!rankingMap[f.consultor_id]) {
-      const co = consultores.find(c => c.id === f.consultor_id)
-      rankingMap[f.consultor_id] = { nome: f.consultor_nome ?? '', valor: 0, qtd: 0, meta: co?.meta_mensal ?? 0 }
-    }
-    rankingMap[f.consultor_id].valor += f.valor
+    if (!rankingMap[f.consultor_id]) rankingMap[f.consultor_id] = { nome: f.consultor_nome ?? '', valor: 0, qtd: 0 }
+    rankingMap[f.consultor_id].valor += f.valor ?? 0
     rankingMap[f.consultor_id].qtd++
   })
   const ranking = Object.entries(rankingMap).sort((a, b) => b[1].valor - a[1].valor)
@@ -49,78 +70,71 @@ export default function FechamentosPage() {
   async function handleSave() {
     setSaving(true)
     await supabase.from('fechamentos').insert([form])
-    // Atualizar status do cliente para Fechado
-    if (form.cliente_id) {
-      await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
-    }
+    if (form.cliente_id) await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
     setSaving(false)
     setModal(false)
     setForm(EMPTY)
     loadData()
   }
 
-  function upd(k: keyof Fechamento, v: any) { setForm(p => ({ ...p, [k]: v })) }
+  function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
+
+  const mesLabel = MESES_2026.find(m => m.value === mesRef)?.label ?? mesRef
 
   return (
     <div>
-      {/* Controle de mês */}
-      <div className="page-header">
-        <div className="flex items-center gap-3">
-          <label className="label mb-0">Mês de referência</label>
-          <input type="month" className="input w-40" value={mesRef} onChange={e => setMesRef(e.target.value)} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
+          <label style={{fontSize:'12px',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.5px'}}>Periodo</label>
+          <select className="select" style={{width:'180px'}} value={mesRef} onChange={e => setMesRef(e.target.value)}>
+            {MESES_2026.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
-        <div className="flex gap-2">
-          <button className="btn-outline"><Download size={14} /> Exportar PDF</button>
-          <button className="btn-primary" onClick={() => { setForm(EMPTY); setModal(true) }}><Plus size={15} /> Registrar Fechamento</button>
+        <button className="btn-primary" onClick={() => { setForm(EMPTY); setModal(true) }}><Plus size={15} /> Registrar Fechamento</button>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px',marginBottom:'20px'}}>
+        <div style={{background:'#C8232B',borderRadius:'12px',padding:'16px',border:'1px solid #C8232B'}}>
+          <div style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Fechamentos</div>
+          <div style={{fontSize:'28px',fontWeight:'500',color:'white',marginTop:'4px'}}>{fechamentos.length}</div>
+          <div style={{fontSize:'11px',color:'rgba(255,255,255,0.6)',marginTop:'2px'}}>{mesLabel}</div>
+        </div>
+        <div className="card" style={{padding:'16px'}}>
+          <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px'}}>Valor Total</div>
+          <div style={{fontSize:'20px',fontWeight:'500',color:'#111827',marginTop:'4px'}}>{formatCurrency(totalValor)}</div>
+        </div>
+        <div className="card" style={{padding:'16px'}}>
+          <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px'}}>Ticket Medio</div>
+          <div style={{fontSize:'20px',fontWeight:'500',color:'#111827',marginTop:'4px'}}>{formatCurrency(ticketMedio)}</div>
+        </div>
+        <div className="card" style={{padding:'16px'}}>
+          <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px'}}>Comissao Total</div>
+          <div style={{fontSize:'20px',fontWeight:'500',color:'#111827',marginTop:'4px'}}>{formatCurrency(totalComissao)}</div>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div className="card red bg-[#C8232B] border-[#C8232B] py-3">
-          <div className="text-xs text-red-200 uppercase tracking-wide">Fechamentos</div>
-          <div className="text-2xl font-medium text-white">{fechamentos.length}</div>
-          <div className="text-xs text-red-200">{mesRef}</div>
-        </div>
-        <div className="card py-3">
-          <div className="text-xs text-gray-400 uppercase tracking-wide">Valor total</div>
-          <div className="text-xl font-medium text-gray-900">{formatCurrency(totalValor)}</div>
-        </div>
-        <div className="card py-3">
-          <div className="text-xs text-gray-400 uppercase tracking-wide">Ticket médio</div>
-          <div className="text-xl font-medium text-gray-900">{formatCurrency(ticketMedio)}</div>
-        </div>
-        <div className="card py-3">
-          <div className="text-xs text-gray-400 uppercase tracking-wide">Comissão total</div>
-          <div className="text-xl font-medium text-gray-900">{formatCurrency(totalComissao)}</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Tabela */}
-        <div className="lg:col-span-2 card p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'16px'}}>
+        <div className="card" style={{padding:0,overflow:'hidden'}}>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse'}}>
+              <thead style={{background:'#f9fafb'}}>
                 <tr>
-                  <th className="table-th">Cliente</th>
-                  <th className="table-th">Consultor</th>
-                  <th className="table-th hidden md:table-cell">Data</th>
-                  <th className="table-th">Valor</th>
-                  <th className="table-th hidden md:table-cell">Comissão</th>
+                  {['Cliente','Consultor','Data','Valor','Comissao'].map(h => (
+                    <th key={h} style={{textAlign:'left',padding:'10px 16px',fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid #f3f4f6'}}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {fechamentos.length === 0 && (
-                  <tr><td colSpan={5} className="table-td text-center text-gray-400 py-8">Nenhum fechamento neste mês.</td></tr>
+                  <tr><td colSpan={5} style={{textAlign:'center',padding:'32px',color:'#9ca3af',fontSize:'13px'}}>Nenhum fechamento neste periodo.</td></tr>
                 )}
                 {fechamentos.map(f => (
-                  <tr key={f.id} className="hover:bg-gray-50">
-                    <td className="table-td font-medium">{f.cliente_nome ?? '-'}</td>
-                    <td className="table-td text-gray-500">{f.consultor_nome ?? '-'}</td>
-                    <td className="table-td hidden md:table-cell text-gray-400 text-xs">{formatDate(f.data_fechamento)}</td>
-                    <td className="table-td font-medium text-[#C8232B]">{formatCurrency(f.valor)}</td>
-                    <td className="table-td hidden md:table-cell text-gray-500 text-sm">{formatCurrency(f.valor_comissao ?? 0)}</td>
+                  <tr key={f.id} style={{borderBottom:'1px solid #f9fafb'}}>
+                    <td style={{padding:'12px 16px',fontWeight:'500',fontSize:'13px',color:'#111827'}}>{f.cliente_nome ?? '-'}</td>
+                    <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{f.consultor_nome ?? '-'}</td>
+                    <td style={{padding:'12px 16px',fontSize:'12px',color:'#9ca3af'}}>{f.data_fechamento}</td>
+                    <td style={{padding:'12px 16px',fontWeight:'500',fontSize:'13px',color:'#C8232B'}}>{formatCurrency(f.valor)}</td>
+                    <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{formatCurrency(f.valor_comissao ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -128,88 +142,82 @@ export default function FechamentosPage() {
           </div>
         </div>
 
-        {/* Ranking */}
         <div className="card">
-          <div className="section-title flex items-center gap-2"><Trophy size={14} className="text-[#C8232B]" /> Ranking de Consultores</div>
+          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'12px',fontWeight:'500',fontSize:'14px'}}>
+            <Trophy size={14} style={{color:'#C8232B'}} /> Ranking de Consultores
+          </div>
           {ranking.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Sem dados.</p>
+            <p style={{fontSize:'13px',color:'#9ca3af',textAlign:'center',padding:'24px 0'}}>Sem dados.</p>
           ) : (
             ranking.map(([id, r], i) => (
-              <div key={id} className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
-                <span className={`text-base font-medium w-5 text-center ${i === 0 ? 'text-[#C8232B]' : 'text-gray-300'}`}>{i + 1}</span>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                  style={{ background: i === 0 ? '#C8232B' : i === 1 ? '#3a3a3a' : '#888' }}>
+              <div key={id} style={{display:'flex',alignItems:'center',gap:'12px',padding:'10px 0',borderBottom:'1px solid #f9fafb'}}>
+                <span style={{fontSize:'16px',fontWeight:'500',width:'20px',textAlign:'center',color: i === 0 ? '#C8232B' : '#d1d5db'}}>{i + 1}</span>
+                <div style={{width:'32px',height:'32px',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:'11px',fontWeight:'500',flexShrink:0,background: i === 0 ? '#C8232B' : i === 1 ? '#3a3a3a' : '#888'}}>
                   {getInitials(r.nome)}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">{r.nome}</div>
-                  <div className="text-xs text-gray-400">{r.qtd} fechamento{r.qtd !== 1 ? 's' : ''}</div>
-                  {r.meta > 0 && (
-                    <div className="w-full h-1.5 bg-gray-100 rounded-full mt-1">
-                      <div className="h-full bg-[#C8232B] rounded-full" style={{ width: `${Math.min((r.valor / r.meta) * 100, 100)}%` }} />
-                    </div>
-                  )}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:'13px',fontWeight:'500',color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nome}</div>
+                  <div style={{fontSize:'11px',color:'#9ca3af'}}>{r.qtd} fechamento{r.qtd !== 1 ? 's' : ''}</div>
                 </div>
-                <span className="text-sm font-medium text-[#C8232B] flex-shrink-0">{formatCurrency(r.valor)}</span>
+                <span style={{fontSize:'13px',fontWeight:'500',color:'#C8232B',flexShrink:0}}>{formatCurrency(r.valor)}</span>
               </div>
             ))
           )}
         </div>
       </div>
 
-      {/* Modal */}
       {modal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="font-medium text-gray-900">Registrar Fechamento</h2>
-              <button onClick={() => setModal(false)}><X size={20} className="text-gray-400" /></button>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',zIndex:1000}}>
+          <div style={{background:'white',borderRadius:'16px',width:'100%',maxWidth:'460px'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px',borderBottom:'1px solid #f3f4f6'}}>
+              <h2 style={{fontWeight:'500',fontSize:'16px'}}>Registrar Fechamento</h2>
+              <button onClick={() => setModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af'}}><X size={20} /></button>
             </div>
-            <div className="p-5 space-y-3">
+            <div style={{padding:'20px',display:'flex',flexDirection:'column',gap:'12px'}}>
               <div>
-                <label className="label">Cliente *</label>
-                <select className="select" value={form.cliente_id ?? ''} onChange={e => upd('cliente_id', e.target.value)}>
+                <label className="label">Cliente</label>
+                <select className="select" value={form.cliente_id} onChange={e => upd('cliente_id', e.target.value)}>
                   <option value="">Selecione o cliente</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  {clientes.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Consultor *</label>
-                <select className="select" value={form.consultor_id ?? ''} onChange={e => upd('consultor_id', e.target.value)}>
+                <label className="label">Consultor</label>
+                <select className="select" value={form.consultor_id} onChange={e => upd('consultor_id', e.target.value)}>
                   <option value="">Selecione o consultor</option>
-                  {consultores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                 <div>
-                  <label className="label">Data</label>
-                  <input type="date" className="input" value={form.data_fechamento ?? ''} onChange={e => upd('data_fechamento', e.target.value)} />
+                  <label className="label">Data do fechamento</label>
+                  <input type="date" className="input" value={form.data_fechamento} onChange={e => upd('data_fechamento', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">Valor (R$) *</label>
-                  <input type="number" className="input" value={form.valor ?? 0} onChange={e => upd('valor', parseFloat(e.target.value))} min={0} />
+                  <label className="label">Valor (R$)</label>
+                  <input type="number" className="input" value={form.valor} onChange={e => upd('valor', parseFloat(e.target.value))} min={0} />
                 </div>
                 <div>
-                  <label className="label">% Comissão</label>
-                  <input type="number" className="input" value={form.percentual_comissao ?? 6} onChange={e => upd('percentual_comissao', parseFloat(e.target.value))} step={0.1} min={0} max={100} />
+                  <label className="label">% Comissao</label>
+                  <input type="number" className="input" value={form.percentual_comissao} onChange={e => upd('percentual_comissao', parseFloat(e.target.value))} step={0.1} min={0} max={100} />
                 </div>
-                <div className="flex items-end pb-0">
-                  <div>
-                    <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Comissão</div>
-                    <div className="text-base font-medium text-[#C8232B]">
-                      {formatCurrency((form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100)}
-                    </div>
+                <div style={{display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+                  <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>Comissao</div>
+                  <div style={{fontSize:'18px',fontWeight:'500',color:'#C8232B'}}>
+                    {formatCurrency((form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100)}
                   </div>
                 </div>
               </div>
               <div>
-                <label className="label">Observações</label>
-                <textarea className="input" rows={2} value={form.observacoes ?? ''} onChange={e => upd('observacoes', e.target.value)} />
+                <label className="label">Observacoes</label>
+                <textarea className="input" rows={2} value={form.observacoes} onChange={e => upd('observacoes', e.target.value)} />
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-5 border-t border-gray-100">
+            <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',padding:'20px',borderTop:'1px solid #f3f4f6'}}>
               <button className="btn-outline" onClick={() => setModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={saving || !form.cliente_id || !form.valor}>{saving ? 'Salvando...' : 'Registrar'}</button>
+              <button className="btn-primary" onClick={handleSave} disabled={saving || !form.cliente_id || !form.valor}>
+                {saving ? 'Salvando...' : 'Registrar'}
+              </button>
             </div>
           </div>
         </div>
