@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Download, Trophy } from 'lucide-react'
+import { Plus, X, Trophy, Trash2 } from 'lucide-react'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -66,6 +66,12 @@ export default function FechamentosPage() {
     rankingMap[f.consultor_id].qtd++
   })
   const ranking = Object.entries(rankingMap).sort((a, b) => b[1].valor - a[1].valor)
+
+  async function handleDelete(id: string) {
+    if (!confirm('Apagar este fechamento?')) return
+    await supabase.from('fechamentos').delete().eq('id', id)
+    loadData()
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -135,6 +141,11 @@ export default function FechamentosPage() {
                     <td style={{padding:'12px 16px',fontSize:'12px',color:'#9ca3af'}}>{f.data_fechamento}</td>
                     <td style={{padding:'12px 16px',fontWeight:'500',fontSize:'13px',color:'#C8232B'}}>{formatCurrency(f.valor)}</td>
                     <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{formatCurrency(f.valor_comissao ?? 0)}</td>
+                    <td style={{padding:'12px 16px'}}>
+                      <button onClick={() => handleDelete(f.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title='Apagar'>
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -225,3 +236,4 @@ export default function FechamentosPage() {
     </div>
   )
 }
+
