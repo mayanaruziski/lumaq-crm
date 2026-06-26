@@ -97,7 +97,8 @@ export default function FechamentosPage() {
     if (editId) {
       await supabase.from('fechamentos').update(payload).eq('id', editId)
     } else {
-      await supabase.from('fechamentos').insert([payload])
+      const { error } = await supabase.from('fechamentos').insert([payload])
+    if (error) { alert('Erro: ' + error.message); setSaving(false); return }
       if (form.cliente_id) await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
     }
     setSaving(false)
@@ -265,4 +266,5 @@ export default function FechamentosPage() {
     </div>
   )
 }
+
 
