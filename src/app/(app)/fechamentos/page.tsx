@@ -89,6 +89,7 @@ export default function FechamentosPage() {
 
   async function handleSave() {
     setSaving(true)
+    console.log('payload:', JSON.stringify(payload ?? form))
     const payload = {
       ...form,
       mes_referencia: form.data_fechamento ? form.data_fechamento.slice(0, 7) : mesRef,
@@ -266,5 +267,6 @@ export default function FechamentosPage() {
     </div>
   )
 }
+
 
 
