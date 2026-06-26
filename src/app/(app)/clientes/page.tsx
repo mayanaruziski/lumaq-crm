@@ -1,126 +1,151 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { formatDate, statusClienteColor, ORIGENS_LEAD, STATUS_KANBAN } from '@/lib/utils'
-import type { Cliente, Consultor } from '@/types'
-import { Plus, Search, Pencil, Trash2, Phone, Mail, MapPin, X } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, Phone, Mail, MapPin } from 'lucide-react'
 
-const EMPTY: Partial<Cliente> = {
+const STATUS_LIST = ['Lead recebido','Primeiro atendimento','Medida tecnica','Desenvolvimento de projeto','Apresentacao','Negociacao','Fechado','Conferencia final','Liberacao para producao','Producao','Montagem','Entregue']
+const ORIGENS = ['Instagram','Facebook','Google','Indicacao','Showroom','WhatsApp','Outros']
+
+const EMPTY: any = {
   nome: '', telefone: '', whatsapp: '', email: '', endereco: '',
-  cidade: '', bairro: '', origem_lead: undefined, consultor_id: undefined,
-  status: 'Lead recebido', temperatura: 'Morno', valor_estimado: undefined, observacoes: '',
+  cidade: '', bairro: '', origem_lead: '', consultor_id: '',
+  status: 'Lead recebido', temperatura: 'Morno', valor_estimado: '', observacoes: '',
+}
+
+function statusColor(status: string) {
+  if (status === 'Fechado' || status === 'Entregue') return { background: '#d1fae5', color: '#065f46' }
+  if (status === 'Negociacao' || status === 'Apresentacao') return { background: '#fef3c7', color: '#92400e' }
+  if (status === 'Lead recebido') return { background: '#f3f4f6', color: '#374151' }
+  return { background: '#dbeafe', color: '#1d4ed8' }
 }
 
 export default function ClientesPage() {
-  const [clientes, setClientes] = useState<Cliente[]>([])
-  const [consultores, setConsultores] = useState<Consultor[]>([])
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [modal, setModal] = useState<'novo' | 'editar' | 'ver' | null>(null)
-  const [form, setForm] = useState<Partial<Cliente>>(EMPTY)
-  const [loading, setLoading] = useState(false)
+  const [clientes, setClientes] = useState<any[]>([])
+  const [consultores, setConsultores] = useState<any[]>([])
+  const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState('')
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState<any>(EMPTY)
+  const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [verModal, setVerModal] = useState(false)
+  const [clienteVer, setClienteVer] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    setLoading(true)
-    const [cliRes, consRes] = await Promise.all([
-      supabase.from('clientes_com_consultor').select('*').order('created_at', { ascending: false }),
-      supabase.from('consultores').select('*').eq('ativo', true).order('nome'),
+    const [cliRes, coRes] = await Promise.all([
+      supabase.from('clientes').select('*, consultor:consultores(nome)').order('created_at', { ascending: false }),
+      supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome'),
     ])
-    setClientes(cliRes.data ?? [])
-    setConsultores(consRes.data ?? [])
-    setLoading(false)
+    setClientes((cliRes.data ?? []).map((c: any) => ({ ...c, consultor_nome: c.consultor?.nome })))
+    setConsultores(coRes.data ?? [])
   }
 
   const filtered = clientes.filter(c => {
-    const q = search.toLowerCase()
-    const matchSearch = !search || c.nome.toLowerCase().includes(q) || (c.email ?? '').toLowerCase().includes(q) || (c.telefone ?? '').includes(q)
-    const matchStatus = !filterStatus || c.status === filterStatus
-    return matchSearch && matchStatus
+    const matchBusca = !busca || c.nome.toLowerCase().includes(busca.toLowerCase()) || (c.telefone && c.telefone.includes(busca))
+    const matchStatus = !filtroStatus || c.status === filtroStatus
+    return matchBusca && matchStatus
   })
 
-  function openNovo() { setForm(EMPTY); setModal('novo') }
-  function openEditar(c: Cliente) { setForm(c); setModal('editar') }
-  function openVer(c: Cliente) { setForm(c); setModal('ver') }
+  function handleEdit(c: any) {
+    setForm({
+      nome: c.nome ?? '',
+      telefone: c.telefone ?? '',
+      whatsapp: c.whatsapp ?? '',
+      email: c.email ?? '',
+      endereco: c.endereco ?? '',
+      cidade: c.cidade ?? '',
+      bairro: c.bairro ?? '',
+      origem_lead: c.origem_lead ?? '',
+      consultor_id: c.consultor_id ?? '',
+      status: c.status ?? 'Lead recebido',
+      temperatura: c.temperatura ?? 'Morno',
+      valor_estimado: c.valor_estimado ?? '',
+      observacoes: c.observacoes ?? '',
+    })
+    setEditId(c.id)
+    setModal(true)
+  }
 
   async function handleSave() {
     setSaving(true)
-    if (modal === 'novo') {
-      await supabase.from('clientes').insert([form])
+    const payload = { ...form, consultor_id: form.consultor_id || null, valor_estimado: form.valor_estimado || null }
+    if (editId) {
+      await supabase.from('clientes').update(payload).eq('id', editId)
     } else {
-      await supabase.from('clientes').update(form).eq('id', form.id!)
+      await supabase.from('clientes').insert([payload])
     }
     setSaving(false)
-    setModal(null)
+    setModal(false)
+    setForm(EMPTY)
+    setEditId(null)
     loadData()
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remover este cliente? Esta ação não pode ser desfeita.')) return
+    if (!confirm('Apagar este cliente?')) return
     await supabase.from('clientes').delete().eq('id', id)
     loadData()
   }
 
-  function upd(k: keyof Cliente, v: any) { setForm(prev => ({ ...prev, [k]: v })) }
+  function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
 
   return (
     <div>
-      <div className="page-header">
-        <div className="flex gap-2 flex-1 max-w-lg">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input pl-8" placeholder="Buscar por nome, e-mail ou telefone..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px',flexWrap:'wrap',gap:'12px'}}>
+        <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+          <div style={{position:'relative'}}>
+            <Search size={14} style={{position:'absolute',left:'10px',top:'50%',transform:'translateY(-50%)',color:'#9ca3af'}} />
+            <input className="input" style={{paddingLeft:'32px',width:'220px'}} placeholder="Buscar cliente..." value={busca} onChange={e => setBusca(e.target.value)} />
           </div>
-          <select className="select w-48" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <select className="select" style={{width:'180px'}} value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}>
             <option value="">Todos os status</option>
-            {STATUS_KANBAN.map(s => <option key={s}>{s}</option>)}
+            {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
-        <button className="btn-primary" onClick={openNovo}><Plus size={15} /> Novo Cliente</button>
+        <button className="btn-primary" onClick={() => { setForm(EMPTY); setEditId(null); setModal(true) }}><Plus size={15} /> Novo Cliente</button>
       </div>
 
-      <div className="card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
+      <div style={{fontSize:'12px',color:'#9ca3af',marginBottom:'12px'}}>{filtered.length} cliente{filtered.length !== 1 ? 's' : ''}</div>
+
+      <div className="card" style={{padding:0,overflow:'hidden'}}>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead style={{background:'#f9fafb'}}>
               <tr>
-                <th className="table-th">Nome</th>
-                <th className="table-th hidden md:table-cell">Contato</th>
-                <th className="table-th hidden lg:table-cell">Origem</th>
-                <th className="table-th">Consultor</th>
-                <th className="table-th">Status</th>
-                <th className="table-th hidden md:table-cell">Entrada</th>
-                <th className="table-th w-20"></th>
+                {['Cliente','Contato','Consultor','Status','Temperatura',''].map(h => (
+                  <th key={h} style={{textAlign:'left',padding:'10px 16px',fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid #f3f4f6'}}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={7} className="table-td text-center text-gray-400 py-8">Carregando...</td></tr>
-              )}
-              {!loading && filtered.length === 0 && (
-                <tr><td colSpan={7} className="table-td text-center text-gray-400 py-8">Nenhum cliente encontrado.</td></tr>
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} style={{textAlign:'center',padding:'32px',color:'#9ca3af',fontSize:'13px'}}>Nenhum cliente encontrado.</td></tr>
               )}
               {filtered.map(c => (
-                <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => openVer(c)}>
-                  <td className="table-td font-medium">{c.nome}</td>
-                  <td className="table-td hidden md:table-cell text-gray-500 text-xs">
-                    {c.telefone && <div className="flex items-center gap-1"><Phone size={11} />{c.telefone}</div>}
-                    {c.email && <div className="flex items-center gap-1"><Mail size={11} />{c.email}</div>}
+                <tr key={c.id} style={{borderBottom:'1px solid #f9fafb',cursor:'pointer'}} onClick={() => { setClienteVer(c); setVerModal(true) }}>
+                  <td style={{padding:'12px 16px'}}>
+                    <div style={{fontWeight:'500',fontSize:'13px',color:'#111827'}}>{c.nome}</div>
+                    {c.origem_lead && <div style={{fontSize:'11px',color:'#9ca3af'}}>{c.origem_lead}</div>}
                   </td>
-                  <td className="table-td hidden lg:table-cell">
-                    {c.origem_lead && <span className="badge bg-gray-100 text-gray-600">{c.origem_lead}</span>}
+                  <td style={{padding:'12px 16px'}}>
+                    {c.telefone && <div style={{fontSize:'12px',color:'#6b7280',display:'flex',alignItems:'center',gap:'4px'}}><Phone size={11} />{c.telefone}</div>}
+                    {c.email && <div style={{fontSize:'12px',color:'#6b7280',display:'flex',alignItems:'center',gap:'4px'}}><Mail size={11} />{c.email}</div>}
                   </td>
-                  <td className="table-td text-gray-600">{c.consultor_nome ?? '-'}</td>
-                  <td className="table-td">
-                    <span className={`badge ${statusClienteColor(c.status)}`}>{c.status}</span>
+                  <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{c.consultor_nome ?? '-'}</td>
+                  <td style={{padding:'12px 16px'}}>
+                    <span style={{fontSize:'11px',padding:'3px 8px',borderRadius:'20px',fontWeight:'500',...statusColor(c.status)}}>{c.status}</span>
                   </td>
-                  <td className="table-td hidden md:table-cell text-gray-400 text-xs">{formatDate(c.data_entrada)}</td>
-                  <td className="table-td" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-1">
-                      <button className="btn-ghost p-1.5" onClick={() => openEditar(c)}><Pencil size={13} /></button>
-                      <button className="btn-ghost p-1.5 text-red-400 hover:text-red-600" onClick={() => handleDelete(c.id)}><Trash2 size={13} /></button>
+                  <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{c.temperatura ?? '-'}</td>
+                  <td style={{padding:'12px 16px'}} onClick={e => e.stopPropagation()}>
+                    <div style={{display:'flex',gap:'4px'}}>
+                      <button onClick={() => handleEdit(c)} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',cursor:'pointer',color:'#6b7280',padding:'4px 6px'}} title="Editar">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDelete(c.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title="Apagar">
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -130,98 +155,113 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      {/* Modal novo/editar/ver */}
-      {modal && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
-              <h2 className="font-medium text-gray-900">
-                {modal === 'novo' ? 'Novo Cliente' : modal === 'editar' ? 'Editar Cliente' : form.nome}
-              </h2>
-              <button onClick={() => setModal(null)}><X size={20} className="text-gray-400" /></button>
+      {verModal && clienteVer && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',zIndex:1000}} onClick={() => setVerModal(false)}>
+          <div style={{background:'white',borderRadius:'16px',width:'100%',maxWidth:'480px',maxHeight:'90vh',overflowY:'auto'}} onClick={e => e.stopPropagation()}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px',borderBottom:'1px solid #f3f4f6'}}>
+              <h2 style={{fontWeight:'500',fontSize:'16px'}}>{clienteVer.nome}</h2>
+              <div style={{display:'flex',gap:'8px'}}>
+                <button onClick={() => { setVerModal(false); handleEdit(clienteVer) }} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',cursor:'pointer',color:'#6b7280',padding:'6px 10px',fontSize:'12px',display:'flex',alignItems:'center',gap:'4px'}}>
+                  <Pencil size={12} /> Editar
+                </button>
+                <button onClick={() => setVerModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af'}}><X size={20} /></button>
+              </div>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="label">Nome completo *</label>
-                  <input className="input" value={form.nome ?? ''} onChange={e => upd('nome', e.target.value)} disabled={modal === 'ver'} />
-                </div>
+            <div style={{padding:'20px',display:'flex',flexDirection:'column',gap:'12px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+                <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>STATUS</div><span style={{fontSize:'12px',padding:'3px 8px',borderRadius:'20px',fontWeight:'500',...statusColor(clienteVer.status)}}>{clienteVer.status}</span></div>
+                <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>CONSULTOR</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.consultor_nome ?? '-'}</div></div>
+                {clienteVer.telefone && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>TELEFONE</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.telefone}</div></div>}
+                {clienteVer.whatsapp && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>WHATSAPP</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.whatsapp}</div></div>}
+                {clienteVer.email && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>EMAIL</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.email}</div></div>}
+                {clienteVer.cidade && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>CIDADE</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.cidade}</div></div>}
+                {clienteVer.origem_lead && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>ORIGEM</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.origem_lead}</div></div>}
+                {clienteVer.temperatura && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'2px'}}>TEMPERATURA</div><div style={{fontSize:'13px',color:'#111827'}}>{clienteVer.temperatura}</div></div>}
+              </div>
+              {clienteVer.observacoes && <div><div style={{fontSize:'11px',color:'#9ca3af',marginBottom:'4px'}}>OBSERVACOES</div><div style={{fontSize:'13px',color:'#374151',background:'#f9fafb',padding:'8px',borderRadius:'6px'}}>{clienteVer.observacoes}</div></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',zIndex:1000}}>
+          <div style={{background:'white',borderRadius:'16px',width:'100%',maxWidth:'560px',maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px',borderBottom:'1px solid #f3f4f6'}}>
+              <h2 style={{fontWeight:'500',fontSize:'16px'}}>{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+              <button onClick={() => { setModal(false); setEditId(null) }} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af'}}><X size={20} /></button>
+            </div>
+            <div style={{padding:'20px',display:'flex',flexDirection:'column',gap:'12px'}}>
+              <div>
+                <label className="label">Nome completo</label>
+                <input className="input" value={form.nome} onChange={e => upd('nome', e.target.value)} placeholder="Nome do cliente" />
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                 <div>
                   <label className="label">Telefone</label>
-                  <input className="input" value={form.telefone ?? ''} onChange={e => upd('telefone', e.target.value)} disabled={modal === 'ver'} placeholder="(63) 9 9000-0000" />
+                  <input className="input" value={form.telefone} onChange={e => upd('telefone', e.target.value)} />
                 </div>
                 <div>
                   <label className="label">WhatsApp</label>
-                  <input className="input" value={form.whatsapp ?? ''} onChange={e => upd('whatsapp', e.target.value)} disabled={modal === 'ver'} placeholder="(63) 9 9000-0000" />
-                </div>
-                <div className="col-span-2">
-                  <label className="label">E-mail</label>
-                  <input className="input" type="email" value={form.email ?? ''} onChange={e => upd('email', e.target.value)} disabled={modal === 'ver'} />
-                </div>
-                <div className="col-span-2">
-                  <label className="label">Endereço</label>
-                  <input className="input" value={form.endereco ?? ''} onChange={e => upd('endereco', e.target.value)} disabled={modal === 'ver'} placeholder="Rua, número" />
+                  <input className="input" value={form.whatsapp} onChange={e => upd('whatsapp', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">Cidade</label>
-                  <input className="input" value={form.cidade ?? ''} onChange={e => upd('cidade', e.target.value)} disabled={modal === 'ver'} />
+                  <label className="label">Email</label>
+                  <input className="input" type="email" value={form.email} onChange={e => upd('email', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">Bairro</label>
-                  <input className="input" value={form.bairro ?? ''} onChange={e => upd('bairro', e.target.value)} disabled={modal === 'ver'} />
-                </div>
-                <div>
-                  <label className="label">Origem do Lead</label>
-                  <select className="select" value={form.origem_lead ?? ''} onChange={e => upd('origem_lead', e.target.value)} disabled={modal === 'ver'}>
+                  <label className="label">Origem do lead</label>
+                  <select className="select" value={form.origem_lead} onChange={e => upd('origem_lead', e.target.value)}>
                     <option value="">Selecione</option>
-                    {ORIGENS_LEAD.map(o => <option key={o}>{o}</option>)}
+                    {ORIGENS.map(o => <option key={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="label">Consultor responsável</label>
-                  <select className="select" value={form.consultor_id ?? ''} onChange={e => upd('consultor_id', e.target.value)} disabled={modal === 'ver'}>
+                  <label className="label">Consultor responsavel</label>
+                  <select className="select" value={form.consultor_id} onChange={e => upd('consultor_id', e.target.value)}>
                     <option value="">Selecione</option>
-                    {consultores.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Status</label>
-                  <select className="select" value={form.status ?? 'Lead recebido'} onChange={e => upd('status', e.target.value)} disabled={modal === 'ver'}>
-                    {STATUS_KANBAN.map(s => <option key={s}>{s}</option>)}
+                  <select className="select" value={form.status} onChange={e => upd('status', e.target.value)}>
+                    {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Temperatura</label>
-                  <select className="select" value={form.temperatura ?? 'Morno'} onChange={e => upd('temperatura', e.target.value)} disabled={modal === 'ver'}>
-                    <option>Frio</option><option>Morno</option><option>Quente</option>
+                  <select className="select" value={form.temperatura} onChange={e => upd('temperatura', e.target.value)}>
+                    <option>Quente</option><option>Morno</option><option>Frio</option>
                   </select>
                 </div>
                 <div>
                   <label className="label">Valor estimado (R$)</label>
-                  <input className="input" type="number" value={form.valor_estimado ?? ''} onChange={e => upd('valor_estimado', parseFloat(e.target.value))} disabled={modal === 'ver'} placeholder="0,00" />
+                  <input className="input" type="number" value={form.valor_estimado} onChange={e => upd('valor_estimado', e.target.value)} min={0} />
                 </div>
                 <div>
-                  <label className="label">Data de entrada</label>
-                  <input className="input" type="date" value={form.data_entrada ?? ''} onChange={e => upd('data_entrada', e.target.value)} disabled={modal === 'ver'} />
+                  <label className="label">Cidade</label>
+                  <input className="input" value={form.cidade} onChange={e => upd('cidade', e.target.value)} />
                 </div>
-                <div className="col-span-2">
-                  <label className="label">Observações</label>
-                  <textarea className="input" rows={3} value={form.observacoes ?? ''} onChange={e => upd('observacoes', e.target.value)} disabled={modal === 'ver'} />
+                <div>
+                  <label className="label">Bairro</label>
+                  <input className="input" value={form.bairro} onChange={e => upd('bairro', e.target.value)} />
                 </div>
               </div>
+              <div>
+                <label className="label">Endereco</label>
+                <input className="input" value={form.endereco} onChange={e => upd('endereco', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Observacoes</label>
+                <textarea className="input" rows={3} value={form.observacoes} onChange={e => upd('observacoes', e.target.value)} />
+              </div>
             </div>
-            <div className="flex justify-end gap-2 p-5 border-t border-gray-100">
-              <button className="btn-outline" onClick={() => setModal(null)}>
-                {modal === 'ver' ? 'Fechar' : 'Cancelar'}
+            <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',padding:'20px',borderTop:'1px solid #f3f4f6'}}>
+              <button className="btn-outline" onClick={() => { setModal(false); setEditId(null) }}>Cancelar</button>
+              <button className="btn-primary" onClick={handleSave} disabled={saving || !form.nome}>
+                {saving ? 'Salvando...' : editId ? 'Atualizar' : 'Salvar'}
               </button>
-              {modal !== 'ver' && (
-                <button className="btn-primary" onClick={handleSave} disabled={saving}>
-                  {saving ? 'Salvando...' : 'Salvar'}
-                </button>
-              )}
-              {modal === 'ver' && (
-                <button className="btn-primary" onClick={() => setModal('editar')}><Pencil size={14} /> Editar</button>
-              )}
             </div>
           </div>
         </div>
