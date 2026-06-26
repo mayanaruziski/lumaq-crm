@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Trophy, Trash2 } from 'lucide-react'
+import { Plus, X, Trophy, Trash2, Pencil } from 'lucide-react'
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -11,7 +11,7 @@ function getInitials(name: string) {
   return name.split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()
 }
 
-const MESES_2026 = [
+const MESES = [
   { value: '2026-01', label: 'Janeiro 2026' },
   { value: '2026-02', label: 'Fevereiro 2026' },
   { value: '2026-03', label: 'Marco 2026' },
@@ -37,6 +37,7 @@ export default function FechamentosPage() {
   const [consultores, setConsultores] = useState<any[]>([])
   const [modal, setModal] = useState(false)
   const [form, setForm] = useState<any>(EMPTY)
+  const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadData() }, [mesRef])
@@ -73,19 +74,42 @@ export default function FechamentosPage() {
     loadData()
   }
 
+  function handleEdit(f: any) {
+    setForm({
+      cliente_id: f.cliente_id ?? '',
+      consultor_id: f.consultor_id ?? '',
+      data_fechamento: f.data_fechamento ?? new Date().toISOString().split('T')[0],
+      valor: f.valor ?? 0,
+      percentual_comissao: f.percentual_comissao ?? 6,
+      observacoes: f.observacoes ?? '',
+    })
+    setEditId(f.id)
+    setModal(true)
+  }
+
   async function handleSave() {
     setSaving(true)
-    await supabase.from('fechamentos').insert([form])
-    if (form.cliente_id) await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
+    const payload = {
+      ...form,
+      mes_referencia: form.data_fechamento ? form.data_fechamento.slice(0, 7) : mesRef,
+      valor_comissao: (form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100,
+    }
+    if (editId) {
+      await supabase.from('fechamentos').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('fechamentos').insert([payload])
+      if (form.cliente_id) await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
+    }
     setSaving(false)
     setModal(false)
     setForm(EMPTY)
+    setEditId(null)
     loadData()
   }
 
   function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
 
-  const mesLabel = MESES_2026.find(m => m.value === mesRef)?.label ?? mesRef
+  const mesLabel = MESES.find(m => m.value === mesRef)?.label ?? mesRef
 
   return (
     <div>
@@ -93,14 +117,14 @@ export default function FechamentosPage() {
         <div style={{display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
           <label style={{fontSize:'12px',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.5px'}}>Periodo</label>
           <select className="select" style={{width:'180px'}} value={mesRef} onChange={e => setMesRef(e.target.value)}>
-            {MESES_2026.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            {MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
-        <button className="btn-primary" onClick={() => { setForm(EMPTY); setModal(true) }}><Plus size={15} /> Registrar Fechamento</button>
+        <button className="btn-primary" onClick={() => { setForm(EMPTY); setEditId(null); setModal(true) }}><Plus size={15} /> Registrar Fechamento</button>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px',marginBottom:'20px'}}>
-        <div style={{background:'#C8232B',borderRadius:'12px',padding:'16px',border:'1px solid #C8232B'}}>
+        <div style={{background:'#C8232B',borderRadius:'12px',padding:'16px'}}>
           <div style={{fontSize:'11px',color:'rgba(255,255,255,0.7)',textTransform:'uppercase',letterSpacing:'0.5px'}}>Fechamentos</div>
           <div style={{fontSize:'28px',fontWeight:'500',color:'white',marginTop:'4px'}}>{fechamentos.length}</div>
           <div style={{fontSize:'11px',color:'rgba(255,255,255,0.6)',marginTop:'2px'}}>{mesLabel}</div>
@@ -125,14 +149,14 @@ export default function FechamentosPage() {
             <table style={{width:'100%',borderCollapse:'collapse'}}>
               <thead style={{background:'#f9fafb'}}>
                 <tr>
-                  {['Cliente','Consultor','Data','Valor','Comissao'].map(h => (
+                  {['Cliente','Consultor','Data','Valor','Comissao',''].map(h => (
                     <th key={h} style={{textAlign:'left',padding:'10px 16px',fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid #f3f4f6'}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {fechamentos.length === 0 && (
-                  <tr><td colSpan={5} style={{textAlign:'center',padding:'32px',color:'#9ca3af',fontSize:'13px'}}>Nenhum fechamento neste periodo.</td></tr>
+                  <tr><td colSpan={6} style={{textAlign:'center',padding:'32px',color:'#9ca3af',fontSize:'13px'}}>Nenhum fechamento neste periodo.</td></tr>
                 )}
                 {fechamentos.map(f => (
                   <tr key={f.id} style={{borderBottom:'1px solid #f9fafb'}}>
@@ -142,9 +166,14 @@ export default function FechamentosPage() {
                     <td style={{padding:'12px 16px',fontWeight:'500',fontSize:'13px',color:'#C8232B'}}>{formatCurrency(f.valor)}</td>
                     <td style={{padding:'12px 16px',fontSize:'13px',color:'#6b7280'}}>{formatCurrency(f.valor_comissao ?? 0)}</td>
                     <td style={{padding:'12px 16px'}}>
-                      <button onClick={() => handleDelete(f.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title='Apagar'>
-                        <Trash2 size={13} />
-                      </button>
+                      <div style={{display:'flex',gap:'4px'}}>
+                        <button onClick={() => handleEdit(f)} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',cursor:'pointer',color:'#6b7280',padding:'4px 6px'}} title="Editar">
+                          <Pencil size={13} />
+                        </button>
+                        <button onClick={() => handleDelete(f.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title="Apagar">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -181,8 +210,8 @@ export default function FechamentosPage() {
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',zIndex:1000}}>
           <div style={{background:'white',borderRadius:'16px',width:'100%',maxWidth:'460px'}}>
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px',borderBottom:'1px solid #f3f4f6'}}>
-              <h2 style={{fontWeight:'500',fontSize:'16px'}}>Registrar Fechamento</h2>
-              <button onClick={() => setModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af'}}><X size={20} /></button>
+              <h2 style={{fontWeight:'500',fontSize:'16px'}}>{editId ? 'Editar Fechamento' : 'Registrar Fechamento'}</h2>
+              <button onClick={() => { setModal(false); setEditId(null) }} style={{background:'none',border:'none',cursor:'pointer',color:'#9ca3af'}}><X size={20} /></button>
             </div>
             <div style={{padding:'20px',display:'flex',flexDirection:'column',gap:'12px'}}>
               <div>
@@ -213,7 +242,7 @@ export default function FechamentosPage() {
                   <input type="number" className="input" value={form.percentual_comissao} onChange={e => upd('percentual_comissao', parseFloat(e.target.value))} step={0.1} min={0} max={100} />
                 </div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-                  <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>Comissao</div>
+                  <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>Comissao calculada</div>
                   <div style={{fontSize:'18px',fontWeight:'500',color:'#C8232B'}}>
                     {formatCurrency((form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100)}
                   </div>
@@ -225,9 +254,9 @@ export default function FechamentosPage() {
               </div>
             </div>
             <div style={{display:'flex',justifyContent:'flex-end',gap:'8px',padding:'20px',borderTop:'1px solid #f3f4f6'}}>
-              <button className="btn-outline" onClick={() => setModal(false)}>Cancelar</button>
+              <button className="btn-outline" onClick={() => { setModal(false); setEditId(null) }}>Cancelar</button>
               <button className="btn-primary" onClick={handleSave} disabled={saving || !form.cliente_id || !form.valor}>
-                {saving ? 'Salvando...' : 'Registrar'}
+                {saving ? 'Salvando...' : editId ? 'Atualizar' : 'Registrar'}
               </button>
             </div>
           </div>
@@ -236,4 +265,3 @@ export default function FechamentosPage() {
     </div>
   )
 }
-
