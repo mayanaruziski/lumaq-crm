@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Pencil, Trash2, X, Phone, Mail, MapPin } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, Phone, Mail, Copy } from 'lucide-react'
 
 const STATUS_LIST = ['Lead recebido','Primeiro atendimento','Medida tecnica','Desenvolvimento de projeto','Apresentacao','Negociacao','Fechado','Conferencia final','Liberacao para producao','Producao','Montagem','Entregue']
 const ORIGENS = ['Instagram','Facebook','Google','Indicacao','Showroom','WhatsApp','Outros']
@@ -83,6 +83,26 @@ export default function ClientesPage() {
     loadData()
   }
 
+  async function handleDuplicate(c: any) {
+    const novo = {
+      nome: c.nome + ' (2)',
+      telefone: c.telefone ?? '',
+      whatsapp: c.whatsapp ?? '',
+      email: c.email ?? '',
+      endereco: c.endereco ?? '',
+      cidade: c.cidade ?? '',
+      bairro: c.bairro ?? '',
+      origem_lead: c.origem_lead ?? '',
+      consultor_id: c.consultor_id ?? null,
+      status: 'Lead recebido',
+      temperatura: 'Morno',
+      valor_estimado: null,
+      observacoes: 'Duplicado de: ' + c.nome,
+    }
+    await supabase.from('clientes').insert([novo])
+    loadData()
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Apagar este cliente?')) return
     await supabase.from('clientes').delete().eq('id', id)
@@ -142,6 +162,9 @@ export default function ClientesPage() {
                     <div style={{display:'flex',gap:'4px'}}>
                       <button onClick={() => handleEdit(c)} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',cursor:'pointer',color:'#6b7280',padding:'4px 6px'}} title="Editar">
                         <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDuplicate(c)} style={{background:'none',border:'1px solid #dbeafe',borderRadius:'6px',cursor:'pointer',color:'#1d4ed8',padding:'4px 6px'}} title="Duplicar cliente">
+                        <Copy size={13} />
                       </button>
                       <button onClick={() => handleDelete(c.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title="Apagar">
                         <Trash2 size={13} />
@@ -269,3 +292,6 @@ export default function ClientesPage() {
     </div>
   )
 }
+
+
+
