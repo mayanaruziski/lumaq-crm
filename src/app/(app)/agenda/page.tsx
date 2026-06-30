@@ -5,7 +5,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseIS
 import { ptBR } from 'date-fns/locale'
 import { Plus, X, ChevronLeft, ChevronRight, Trash2, Pencil } from 'lucide-react'
 
-const EMPTY_EV = { titulo: '', tipo: '', data_inicio: '', data_fim: '', local: '', descricao: '', cliente_id: '' }
+const EMPTY_EV = { titulo: '', tipo: '', data_inicio: '', data_fim: '', local: '', descricao: '', cliente_id: '', consultor_id: '' }
 
 export default function AgendaPage() {
   const [mes, setMes] = useState(new Date())
@@ -15,19 +15,46 @@ export default function AgendaPage() {
   const [form, setForm] = useState<any>(EMPTY_EV)
   const [editId, setEditId] = useState<string | null>(null)
   const [clientes, setClientes] = useState<any[]>([])
+  const [consultores, setConsultores] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
+  const [isSup, setIsSup] = useState(true)
+  const [meuConsultorId, setMeuConsultorId] = useState<string | null>(null)
+  const [loadingPerfil, setLoadingPerfil] = useState(true)
 
-  useEffect(() => { loadData() }, [mes])
+  useEffect(() => {
+    initAndLoad()
+  }, [mes])
 
-  async function loadData() {
+  async function initAndLoad() {
+    const { data: { session } } = await supabase.auth.getSession()
+    let sup = true
+    let consId: string | null = null
+    if (session) {
+      const { data } = await supabase.from('perfis').select('role, consultor_id').eq('id', session.user.id).single()
+      if (data) {
+        sup = data.role === 'supervisora'
+        consId = data.consultor_id
+      }
+    }
+    setIsSup(sup)
+    setMeuConsultorId(consId)
+    setLoadingPerfil(false)
+    await loadData(sup, consId)
+  }
+
+  async function loadData(sup: boolean, consId: string | null) {
     const inicio = format(startOfMonth(mes), 'yyyy-MM-dd')
     const fim = format(endOfMonth(mes), 'yyyy-MM-dd')
-    const [evRes, cliRes] = await Promise.all([
-      supabase.from('eventos').select('*, cliente:clientes(nome)').gte('data_inicio', inicio).lte('data_inicio', fim + 'T23:59:59').order('data_inicio'),
-      supabase.from('clientes').select('id, nome').order('nome'),
-    ])
+    let query = supabase.from('eventos').select('*, cliente:clientes(nome)').gte('data_inicio', inicio).lte('data_inicio', fim + 'T23:59:59').order('data_inicio')
+    if (!sup && consId) {
+      query = query.eq('consultor_id', consId)
+    }
+    const evRes = await query
+    const cliRes = await supabase.from('clientes').select('id, nome').order('nome')
+    const coRes = await supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome')
     setEventos((evRes.data ?? []).map((e: any) => ({ ...e, cliente_nome: e.cliente?.nome })))
     setClientes(cliRes.data ?? [])
+    setConsultores(coRes.data ?? [])
   }
 
   const diasMes = eachDayOfInterval({ start: startOfMonth(mes), end: endOfMonth(mes) })
@@ -37,22 +64,24 @@ export default function AgendaPage() {
 
   async function handleSave() {
     setSaving(true)
+    const payload = { ...form }
+    if (!isSup && meuConsultorId) payload.consultor_id = meuConsultorId
     if (editId) {
-      await supabase.from('eventos').update(form).eq('id', editId)
+      await supabase.from('eventos').update(payload).eq('id', editId)
     } else {
-      await supabase.from('eventos').insert([form])
+      await supabase.from('eventos').insert([payload])
     }
     setSaving(false)
     setModal(false)
     setForm(EMPTY_EV)
     setEditId(null)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Apagar este evento?')) return
     await supabase.from('eventos').delete().eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   function handleEdit(e: any) {
@@ -64,6 +93,7 @@ export default function AgendaPage() {
       local: e.local ?? '',
       descricao: e.descricao ?? '',
       cliente_id: e.cliente_id ?? '',
+      consultor_id: e.consultor_id ?? '',
     })
     setEditId(e.id)
     setModal(true)
@@ -71,10 +101,14 @@ export default function AgendaPage() {
 
   function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
   function openNovoComDia(dia: Date) {
-    setForm({ ...EMPTY_EV, data_inicio: format(dia, "yyyy-MM-dd'T'HH:mm") })
+    const base = { ...EMPTY_EV, data_inicio: format(dia, "yyyy-MM-dd'T'HH:mm") }
+    if (!isSup && meuConsultorId) base.consultor_id = meuConsultorId
+    setForm(base)
     setEditId(null)
     setModal(true)
   }
+
+  if (loadingPerfil) return <div style={{textAlign:'center',padding:'40px',color:'#9ca3af'}}>Carregando...</div>
 
   const tipo_cores: Record<string, string> = {
     Visita: '#dbeafe', Medida: '#fef3c7', Apresentacao: '#ede9fe',
@@ -83,6 +117,12 @@ export default function AgendaPage() {
 
   return (
     <div>
+      {!isSup && (
+        <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 14px',borderRadius:'8px',fontSize:'12px',marginBottom:'16px'}}>
+          Voce esta vendo apenas seus proprios eventos.
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
         <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
           <button onClick={() => setMes(subMonths(mes, 1))} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 10px',cursor:'pointer'}}><ChevronLeft size={16} /></button>
@@ -90,7 +130,7 @@ export default function AgendaPage() {
           <button onClick={() => setMes(addMonths(mes, 1))} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 10px',cursor:'pointer'}}><ChevronRight size={16} /></button>
           <button onClick={() => setMes(new Date())} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',padding:'4px 10px',cursor:'pointer',fontSize:'12px'}}>Hoje</button>
         </div>
-        <button className="btn-primary" onClick={() => { setForm(EMPTY_EV); setEditId(null); setModal(true) }}><Plus size={15} /> Novo Evento</button>
+        <button className="btn-primary" onClick={() => { const base = { ...EMPTY_EV }; if (!isSup && meuConsultorId) base.consultor_id = meuConsultorId; setForm(base); setEditId(null); setModal(true) }}><Plus size={15} /> Novo Evento</button>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:'20px'}}>
@@ -191,6 +231,13 @@ export default function AgendaPage() {
                   <select className="select" value={form.cliente_id} onChange={e => upd('cliente_id', e.target.value)}>
                     <option value="">Nenhum</option>
                     {clientes.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Consultor</label>
+                  <select className="select" value={form.consultor_id} onChange={e => upd('consultor_id', e.target.value)} disabled={!isSup}>
+                    <option value="">Nenhum</option>
+                    {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                 </div>
                 <div>
