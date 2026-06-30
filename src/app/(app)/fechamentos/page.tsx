@@ -39,15 +39,38 @@ export default function FechamentosPage() {
   const [form, setForm] = useState<any>(EMPTY)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [isSup, setIsSup] = useState(true)
+  const [meuConsultorId, setMeuConsultorId] = useState<string | null>(null)
+  const [loadingPerfil, setLoadingPerfil] = useState(true)
 
   useEffect(() => {
-    loadData()
+    initAndLoad()
   }, [mesRef])
 
-  async function loadData() {
+  async function initAndLoad() {
+    const { data: { session } } = await supabase.auth.getSession()
+    let sup = true
+    let consId: string | null = null
+    if (session) {
+      const { data } = await supabase.from('perfis').select('role, consultor_id').eq('id', session.user.id).single()
+      if (data) {
+        sup = data.role === 'supervisora'
+        consId = data.consultor_id
+      }
+    }
+    setIsSup(sup)
+    setMeuConsultorId(consId)
+    setLoadingPerfil(false)
+    await loadData(sup, consId)
+  }
+
+  async function loadData(sup: boolean, consId: string | null) {
     let query = supabase.from('fechamentos').select('*, cliente:clientes(nome), consultor:consultores(nome)').order('data_fechamento', { ascending: false })
     if (mesRef !== 'todos') {
       query = query.eq('mes_referencia', mesRef)
+    }
+    if (!sup && consId) {
+      query = query.eq('consultor_id', consId)
     }
     const fRes = await query
     const cliRes = await supabase.from('clientes').select('id, nome').order('nome')
@@ -73,7 +96,7 @@ export default function FechamentosPage() {
   async function handleDelete(id: string) {
     if (!confirm('Apagar este fechamento?')) return
     await supabase.from('fechamentos').delete().eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   function handleEdit(f: any) {
@@ -93,7 +116,7 @@ export default function FechamentosPage() {
     setSaving(true)
     const valorNum = form.valor !== '' && !isNaN(Number(form.valor)) ? Number(form.valor) : 0
     const percNum = form.percentual_comissao !== '' && !isNaN(Number(form.percentual_comissao)) ? Number(form.percentual_comissao) : 6
-    const payload = {
+    const payload: any = {
       cliente_id: form.cliente_id || null,
       consultor_id: form.consultor_id || null,
       data_fechamento: form.data_fechamento,
@@ -103,6 +126,7 @@ export default function FechamentosPage() {
       mes_referencia: form.data_fechamento ? form.data_fechamento.slice(0, 7) : mesRef,
       valor_comissao: valorNum * percNum / 100,
     }
+    if (!isSup && meuConsultorId) payload.consultor_id = meuConsultorId
     if (editId) {
       await supabase.from('fechamentos').update(payload).eq('id', editId)
     } else {
@@ -113,17 +137,33 @@ export default function FechamentosPage() {
     setModal(false)
     setForm(EMPTY)
     setEditId(null)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   function upd(k: string, v: any) {
     setForm((p: any) => ({ ...p, [k]: v }))
   }
 
+  function openNovo() {
+    const base = { ...EMPTY }
+    if (!isSup && meuConsultorId) base.consultor_id = meuConsultorId
+    setForm(base)
+    setEditId(null)
+    setModal(true)
+  }
+
+  if (loadingPerfil) return <div style={{textAlign:'center',padding:'40px',color:'#9ca3af'}}>Carregando...</div>
+
   const mesLabel = MESES.find(m => m.value === mesRef)?.label ?? mesRef
 
   return (
     <div>
+      {!isSup && (
+        <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 14px',borderRadius:'8px',fontSize:'12px',marginBottom:'16px'}}>
+          Voce esta vendo apenas seus proprios fechamentos.
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px',flexWrap:'wrap',gap:'12px'}}>
         <div style={{display:'flex',alignItems:'center',gap:'12px',flexWrap:'wrap'}}>
           <label style={{fontSize:'12px',color:'#6b7280',textTransform:'uppercase',letterSpacing:'0.5px'}}>Periodo</label>
@@ -131,7 +171,7 @@ export default function FechamentosPage() {
             {MESES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
-        <button className="btn-primary" onClick={() => { setForm(EMPTY); setEditId(null); setModal(true) }}><Plus size={15} /> Registrar Fechamento</button>
+        <button className="btn-primary" onClick={openNovo}><Plus size={15} /> Registrar Fechamento</button>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px',marginBottom:'20px'}}>
@@ -234,7 +274,7 @@ export default function FechamentosPage() {
               </div>
               <div>
                 <label className="label">Consultor</label>
-                <select className="select" value={form.consultor_id} onChange={e => upd('consultor_id', e.target.value)}>
+                <select className="select" value={form.consultor_id} onChange={e => upd('consultor_id', e.target.value)} disabled={!isSup}>
                   <option value="">Selecione o consultor</option>
                   {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
