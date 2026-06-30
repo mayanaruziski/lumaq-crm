@@ -90,7 +90,18 @@ export default function SemanaPage() {
     if (editId) {
       await supabase.from('tarefas').update(form).eq('id', editId)
     } else {
-      await supabase.from('tarefas').insert([form])
+      const { data: novaTarefa } = await supabase.from('tarefas').insert([form]).select().single()
+      if (novaTarefa && novaTarefa.data_inicio) {
+        const dataHora = novaTarefa.hora_inicio ? novaTarefa.data_inicio + 'T' + novaTarefa.hora_inicio : novaTarefa.data_inicio + 'T09:00'
+        await supabase.from('eventos').insert([{
+          titulo: novaTarefa.titulo,
+          tipo: novaTarefa.tipo || 'Outro',
+          cliente_id: novaTarefa.cliente_id,
+          consultor_id: novaTarefa.responsavel_id,
+          data_inicio: dataHora,
+          descricao: novaTarefa.observacoes || '',
+        }])
+      }
     }
     setSaving(false)
     setModal(false)
@@ -248,3 +259,4 @@ export default function SemanaPage() {
     </div>
   )
 }
+
