@@ -31,13 +31,13 @@ export default function ClientesPage() {
   const [verModal, setVerModal] = useState(false)
   const [clienteVer, setClienteVer] = useState<any>(null)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    loadData()
+  }, [])
 
   async function loadData() {
-    const [cliRes, coRes] = await Promise.all([
-      supabase.from('clientes').select('*, consultor:consultores(nome)').order('created_at', { ascending: false }),
-      supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome'),
-    ])
+    const cliRes = await supabase.from('clientes').select('*, consultor:consultores(nome)').order('created_at', { ascending: false })
+    const coRes = await supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome')
     setClientes((cliRes.data ?? []).map((c: any) => ({ ...c, consultor_nome: c.consultor?.nome })))
     setConsultores(coRes.data ?? [])
   }
@@ -68,9 +68,30 @@ export default function ClientesPage() {
     setModal(true)
   }
 
+  function handleDuplicate(c: any) {
+    setForm({
+      nome: c.nome + ' (2)',
+      telefone: c.telefone ?? '',
+      whatsapp: c.whatsapp ?? '',
+      email: c.email ?? '',
+      endereco: c.endereco ?? '',
+      cidade: c.cidade ?? '',
+      bairro: c.bairro ?? '',
+      origem_lead: c.origem_lead ?? '',
+      consultor_id: c.consultor_id ?? '',
+      status: 'Lead recebido',
+      temperatura: 'Morno',
+      valor_estimado: '',
+      observacoes: 'Novo atendimento. Cliente anterior: ' + c.nome,
+    })
+    setEditId(null)
+    setModal(true)
+  }
+
   async function handleSave() {
     setSaving(true)
-    const payload = { ...form, consultor_id: form.consultor_id || null, valor_estimado: form.valor_estimado || null }
+    const valorNum = form.valor_estimado !== '' && form.valor_estimado !== null && !isNaN(Number(form.valor_estimado)) ? Number(form.valor_estimado) : null
+    const payload = { ...form, consultor_id: form.consultor_id || null, valor_estimado: valorNum }
     if (editId) {
       await supabase.from('clientes').update(payload).eq('id', editId)
     } else {
@@ -83,33 +104,15 @@ export default function ClientesPage() {
     loadData()
   }
 
-  async function handleDuplicate(c: any) {
-    const novo = {
-      nome: c.nome + ' (2)',
-      telefone: c.telefone ?? '',
-      whatsapp: c.whatsapp ?? '',
-      email: c.email ?? '',
-      endereco: c.endereco ?? '',
-      cidade: c.cidade ?? '',
-      bairro: c.bairro ?? '',
-      origem_lead: c.origem_lead ?? '',
-      consultor_id: c.consultor_id ?? null,
-      status: 'Lead recebido',
-      temperatura: 'Morno',
-      valor_estimado: null,
-      observacoes: 'Duplicado de: ' + c.nome,
-    }
-    await supabase.from('clientes').insert([novo])
-    loadData()
-  }
-
   async function handleDelete(id: string) {
     if (!confirm('Apagar este cliente?')) return
     await supabase.from('clientes').delete().eq('id', id)
     loadData()
   }
 
-  function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
+  function upd(k: string, v: any) {
+    setForm((p: any) => ({ ...p, [k]: v }))
+  }
 
   return (
     <div>
@@ -163,7 +166,7 @@ export default function ClientesPage() {
                       <button onClick={() => handleEdit(c)} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',cursor:'pointer',color:'#6b7280',padding:'4px 6px'}} title="Editar">
                         <Pencil size={13} />
                       </button>
-                      <button onClick={() => handleDuplicate(c)} style={{background:'none',border:'1px solid #dbeafe',borderRadius:'6px',cursor:'pointer',color:'#1d4ed8',padding:'4px 6px'}} title="Duplicar cliente">
+                      <button onClick={() => handleDuplicate(c)} style={{background:'none',border:'1px solid #dbeafe',borderRadius:'6px',cursor:'pointer',color:'#1d4ed8',padding:'4px 6px'}} title="Duplicar para novo atendimento">
                         <Copy size={13} />
                       </button>
                       <button onClick={() => handleDelete(c.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:'6px',cursor:'pointer',color:'#ef4444',padding:'4px 6px'}} title="Apagar">
@@ -259,7 +262,7 @@ export default function ClientesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">Valor estimado (R$)</label>
+                  <label className="label">Valor estimado (R\$)</label>
                   <input className="input" type="number" value={form.valor_estimado} onChange={e => upd('valor_estimado', e.target.value)} min={0} />
                 </div>
                 <div>
@@ -292,6 +295,3 @@ export default function ClientesPage() {
     </div>
   )
 }
-
-
-
