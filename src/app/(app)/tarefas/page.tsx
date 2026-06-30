@@ -30,6 +30,9 @@ export default function TarefasPage() {
   const [tarefas, setTarefas] = useState<any[]>([])
   const [clientes, setClientes] = useState<any[]>([])
   const [consultores, setConsultores] = useState<any[]>([])
+  const [isSup, setIsSup] = useState(true)
+  const [meuConsultorId, setMeuConsultorId] = useState<string | null>(null)
+  const [loadingPerfil, setLoadingPerfil] = useState(true)
   const [aba, setAba] = useState<'ativas'|'concluidas'>('ativas')
   const [filterStatus, setFilterStatus] = useState('')
   const [modal, setModal] = useState(false)
@@ -37,14 +40,35 @@ export default function TarefasPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    initAndLoad()
+  }, [])
 
-  async function loadData() {
-    const [tRes, cRes, coRes] = await Promise.all([
-      supabase.from('tarefas').select('*, cliente:clientes(nome), responsavel:consultores(nome)').order('data_vencimento', { ascending: true }),
-      supabase.from('clientes').select('id, nome').order('nome'),
-      supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome'),
-    ])
+  async function initAndLoad() {
+    const { data: { session } } = await supabase.auth.getSession()
+    let sup = true
+    let consId: string | null = null
+    if (session) {
+      const { data } = await supabase.from('perfis').select('role, consultor_id').eq('id', session.user.id).single()
+      if (data) {
+        sup = data.role === 'supervisora'
+        consId = data.consultor_id
+      }
+    }
+    setIsSup(sup)
+    setMeuConsultorId(consId)
+    setLoadingPerfil(false)
+    await loadData(sup, consId)
+  }
+
+  async function loadData(sup: boolean, consId: string | null) {
+    let query = supabase.from('tarefas').select('*, cliente:clientes(nome), responsavel:consultores(nome)').order('data_vencimento', { ascending: true })
+    if (!sup && consId) {
+      query = query.eq('responsavel_id', consId)
+    }
+    const tRes = await query
+    const cRes = await supabase.from('clientes').select('id, nome').order('nome')
+    const coRes = await supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome')
     const raw = (tRes.data ?? []).map((t: any) => ({
       ...t, cliente_nome: t.cliente?.nome, responsavel_nome: t.responsavel?.nome,
     }))
@@ -59,32 +83,36 @@ export default function TarefasPage() {
 
   async function handleSave() {
     setSaving(true)
+    const payload = { ...form }
+    if (!isSup && meuConsultorId) {
+      payload.responsavel_id = meuConsultorId
+    }
     if (editId) {
-      await supabase.from('tarefas').update(form).eq('id', editId)
+      await supabase.from('tarefas').update(payload).eq('id', editId)
     } else {
-      await supabase.from('tarefas').insert([form])
+      await supabase.from('tarefas').insert([payload])
     }
     setSaving(false)
     setModal(false)
     setForm(EMPTY)
     setEditId(null)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Apagar esta tarefa?')) return
     await supabase.from('tarefas').delete().eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   async function concluir(id: string) {
     await supabase.from('tarefas').update({ status: 'Concluido', data_conclusao: new Date().toISOString().split('T')[0] }).eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   async function reabrir(id: string) {
     await supabase.from('tarefas').update({ status: 'Nao iniciado', data_conclusao: null }).eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   function handleEdit(t: any) {
@@ -104,10 +132,28 @@ export default function TarefasPage() {
     setModal(true)
   }
 
-  function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
+  function openNova() {
+    const base = { ...EMPTY }
+    if (!isSup && meuConsultorId) base.responsavel_id = meuConsultorId
+    setForm(base)
+    setEditId(null)
+    setModal(true)
+  }
+
+  function upd(k: string, v: any) {
+    setForm((p: any) => ({ ...p, [k]: v }))
+  }
+
+  if (loadingPerfil) return <div style={{textAlign:'center',padding:'40px',color:'#9ca3af'}}>Carregando...</div>
 
   return (
     <div>
+      {!isSup && (
+        <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 14px',borderRadius:'8px',fontSize:'12px',marginBottom:'16px'}}>
+          Voce esta vendo apenas suas proprias tarefas.
+        </div>
+      )}
+
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'12px',marginBottom:'20px'}}>
         {[
           { label: 'Total Ativas', value: ativas.length, color: '#111827' },
@@ -122,7 +168,7 @@ export default function TarefasPage() {
         ))}
       </div>
 
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px',flexWrap:'wrap',gap:'12px'}}>
         <div style={{display:'flex',gap:'0'}}>
           <button onClick={() => { setAba('ativas'); setFilterStatus('') }}
             style={{padding:'8px 20px',border:'1px solid #e5e7eb',borderRadius:'8px 0 0 8px',cursor:'pointer',fontWeight:'500',fontSize:'13px',
@@ -144,7 +190,7 @@ export default function TarefasPage() {
               {STATUS_LIST.map(s => <option key={s}>{s}</option>)}
             </select>
           )}
-          <button className="btn-primary" onClick={() => { setForm(EMPTY); setEditId(null); setModal(true) }}><Plus size={15} /> Nova Tarefa</button>
+          <button className="btn-primary" onClick={openNova}><Plus size={15} /> Nova Tarefa</button>
         </div>
       </div>
 
@@ -247,7 +293,7 @@ export default function TarefasPage() {
                 </div>
                 <div>
                   <label className="label">Responsavel</label>
-                  <select className="select" value={form.responsavel_id} onChange={e => upd('responsavel_id', e.target.value)}>
+                  <select className="select" value={form.responsavel_id} onChange={e => upd('responsavel_id', e.target.value)} disabled={!isSup}>
                     <option value="">Nenhum</option>
                     {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
