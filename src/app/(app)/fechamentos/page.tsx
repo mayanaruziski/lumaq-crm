@@ -40,16 +40,18 @@ export default function FechamentosPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { loadData() }, [mesRef])
+  useEffect(() => {
+    loadData()
+  }, [mesRef])
 
   async function loadData() {
     let query = supabase.from('fechamentos').select('*, cliente:clientes(nome), consultor:consultores(nome)').order('data_fechamento', { ascending: false })
-    if (mesRef !== 'todos') query = query.eq('mes_referencia', mesRef)
-    const [fRes, cliRes, coRes] = await Promise.all([
-      query,
-      supabase.from('clientes').select('id, nome').order('nome'),
-      supabase.from('consultores').select('id, nome, meta_mensal').eq('ativo', true).order('nome'),
-    ])
+    if (mesRef !== 'todos') {
+      query = query.eq('mes_referencia', mesRef)
+    }
+    const fRes = await query
+    const cliRes = await supabase.from('clientes').select('id, nome').order('nome')
+    const coRes = await supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome')
     setFechamentos((fRes.data ?? []).map((f: any) => ({ ...f, cliente_nome: f.cliente?.nome, consultor_nome: f.consultor?.nome })))
     setClientes(cliRes.data ?? [])
     setConsultores(coRes.data ?? [])
@@ -79,7 +81,7 @@ export default function FechamentosPage() {
       cliente_id: f.cliente_id ?? '',
       consultor_id: f.consultor_id ?? '',
       data_fechamento: f.data_fechamento ?? new Date().toISOString().split('T')[0],
-      valor: f.valor ?? 0,
+      valor: f.valor ?? '',
       percentual_comissao: f.percentual_comissao ?? 6,
       observacoes: f.observacoes ?? '',
     })
@@ -89,17 +91,22 @@ export default function FechamentosPage() {
 
   async function handleSave() {
     setSaving(true)
-    console.log('payload:', JSON.stringify(payload ?? form))
+    const valorNum = form.valor !== '' && !isNaN(Number(form.valor)) ? Number(form.valor) : 0
+    const percNum = form.percentual_comissao !== '' && !isNaN(Number(form.percentual_comissao)) ? Number(form.percentual_comissao) : 6
     const payload = {
-      ...form,
+      cliente_id: form.cliente_id || null,
+      consultor_id: form.consultor_id || null,
+      data_fechamento: form.data_fechamento,
+      valor: valorNum,
+      percentual_comissao: percNum,
+      observacoes: form.observacoes,
       mes_referencia: form.data_fechamento ? form.data_fechamento.slice(0, 7) : mesRef,
-      valor_comissao: (form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100,
+      valor_comissao: valorNum * percNum / 100,
     }
     if (editId) {
       await supabase.from('fechamentos').update(payload).eq('id', editId)
     } else {
-      const { error } = await supabase.from('fechamentos').insert([payload])
-    if (error) { alert('Erro: ' + error.message); setSaving(false); return }
+      await supabase.from('fechamentos').insert([payload])
       if (form.cliente_id) await supabase.from('clientes').update({ status: 'Fechado' }).eq('id', form.cliente_id)
     }
     setSaving(false)
@@ -109,7 +116,9 @@ export default function FechamentosPage() {
     loadData()
   }
 
-  function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
+  function upd(k: string, v: any) {
+    setForm((p: any) => ({ ...p, [k]: v }))
+  }
 
   const mesLabel = MESES.find(m => m.value === mesRef)?.label ?? mesRef
 
@@ -236,17 +245,17 @@ export default function FechamentosPage() {
                   <input type="date" className="input" value={form.data_fechamento} onChange={e => upd('data_fechamento', e.target.value)} />
                 </div>
                 <div>
-                  <label className="label">Valor (R$)</label>
-                  <input type="number" className="input" value={form.valor} onChange={e => upd('valor', parseFloat(e.target.value))} min={0} step='0.01' />
+                  <label className="label">Valor (R\$)</label>
+                  <input type="number" className="input" value={form.valor} onChange={e => upd('valor', e.target.value)} min={0} />
                 </div>
                 <div>
                   <label className="label">% Comissao</label>
-                  <input type="number" className="input" value={form.percentual_comissao} onChange={e => upd('percentual_comissao', parseFloat(e.target.value))} step={0.1} min={0} max={100} />
+                  <input type="number" className="input" value={form.percentual_comissao} onChange={e => upd('percentual_comissao', e.target.value)} step={0.1} min={0} max={100} />
                 </div>
                 <div style={{display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
                   <div style={{fontSize:'11px',color:'#9ca3af',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:'4px'}}>Comissao calculada</div>
                   <div style={{fontSize:'18px',fontWeight:'500',color:'#C8232B'}}>
-                    {formatCurrency((form.valor ?? 0) * (form.percentual_comissao ?? 6) / 100)}
+                    {formatCurrency((Number(form.valor) || 0) * (Number(form.percentual_comissao) || 6) / 100)}
                   </div>
                 </div>
               </div>
@@ -267,6 +276,3 @@ export default function FechamentosPage() {
     </div>
   )
 }
-
-
-
