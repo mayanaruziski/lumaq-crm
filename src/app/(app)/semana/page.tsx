@@ -31,21 +31,44 @@ export default function SemanaPage() {
   const [form, setForm] = useState<any>(EMPTY_TAREFA)
   const [editId, setEditId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [diaModal, setDiaModal] = useState('')
+  const [isSup, setIsSup] = useState(true)
+  const [meuConsultorId, setMeuConsultorId] = useState<string | null>(null)
+  const [loadingPerfil, setLoadingPerfil] = useState(true)
 
   const semanaFim = addDays(semanaBase, 5)
   const semanaStr = format(semanaBase, "dd/MM") + ' - ' + format(semanaFim, "dd/MM/yyyy")
 
-  useEffect(() => { loadData() }, [semanaBase])
+  useEffect(() => {
+    initAndLoad()
+  }, [semanaBase])
 
-  async function loadData() {
+  async function initAndLoad() {
+    const { data: { session } } = await supabase.auth.getSession()
+    let sup = true
+    let consId: string | null = null
+    if (session) {
+      const { data } = await supabase.from('perfis').select('role, consultor_id').eq('id', session.user.id).single()
+      if (data) {
+        sup = data.role === 'supervisora'
+        consId = data.consultor_id
+      }
+    }
+    setIsSup(sup)
+    setMeuConsultorId(consId)
+    setLoadingPerfil(false)
+    await loadData(sup, consId)
+  }
+
+  async function loadData(sup: boolean, consId: string | null) {
     const inicio = format(semanaBase, 'yyyy-MM-dd')
     const fim = format(semanaFim, 'yyyy-MM-dd')
-    const [tRes, cliRes, coRes] = await Promise.all([
-      supabase.from('tarefas').select('*, cliente:clientes(nome), responsavel:consultores(nome)').gte('data_inicio', inicio).lte('data_inicio', fim),
-      supabase.from('clientes').select('id, nome').order('nome'),
-      supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome'),
-    ])
+    let query = supabase.from('tarefas').select('*, cliente:clientes(nome), responsavel:consultores(nome)').gte('data_inicio', inicio).lte('data_inicio', fim)
+    if (!sup && consId) {
+      query = query.eq('responsavel_id', consId)
+    }
+    const tRes = await query
+    const cliRes = await supabase.from('clientes').select('id, nome').order('nome')
+    const coRes = await supabase.from('consultores').select('id, nome').eq('ativo', true).order('nome')
     setTarefas((tRes.data ?? []).map((t: any) => ({ ...t, cliente_nome: t.cliente?.nome, responsavel_nome: t.responsavel?.nome })))
     setClientes(cliRes.data ?? [])
     setConsultores(coRes.data ?? [])
@@ -62,8 +85,9 @@ export default function SemanaPage() {
 
   function openNovaTarefa(diaIdx: number) {
     const dia = format(addDays(semanaBase, diaIdx), 'yyyy-MM-dd')
-    setForm({ ...EMPTY_TAREFA, data_inicio: dia })
-    setDiaModal(dia)
+    const base = { ...EMPTY_TAREFA, data_inicio: dia }
+    if (!isSup && meuConsultorId) base.responsavel_id = meuConsultorId
+    setForm(base)
     setEditId(null)
     setModal(true)
   }
@@ -87,10 +111,12 @@ export default function SemanaPage() {
 
   async function handleSave() {
     setSaving(true)
+    const payload = { ...form }
+    if (!isSup && meuConsultorId) payload.responsavel_id = meuConsultorId
     if (editId) {
-      await supabase.from('tarefas').update(form).eq('id', editId)
+      await supabase.from('tarefas').update(payload).eq('id', editId)
     } else {
-      const { data: novaTarefa } = await supabase.from('tarefas').insert([form]).select().single()
+      const { data: novaTarefa } = await supabase.from('tarefas').insert([payload]).select().single()
       if (novaTarefa && novaTarefa.data_inicio) {
         const dataHora = novaTarefa.hora_inicio ? novaTarefa.data_inicio + 'T' + novaTarefa.hora_inicio : novaTarefa.data_inicio + 'T09:00'
         await supabase.from('eventos').insert([{
@@ -107,19 +133,27 @@ export default function SemanaPage() {
     setModal(false)
     setForm(EMPTY_TAREFA)
     setEditId(null)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Apagar esta tarefa?')) return
     await supabase.from('tarefas').delete().eq('id', id)
-    loadData()
+    loadData(isSup, meuConsultorId)
   }
 
   function upd(k: string, v: any) { setForm((p: any) => ({ ...p, [k]: v })) }
 
+  if (loadingPerfil) return <div style={{textAlign:'center',padding:'40px',color:'#9ca3af'}}>Carregando...</div>
+
   return (
     <div>
+      {!isSup && (
+        <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 14px',borderRadius:'8px',fontSize:'12px',marginBottom:'16px'}}>
+          Voce esta vendo apenas suas proprias tarefas.
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
         <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
           <button onClick={() => setSemanaBase(subWeeks(semanaBase, 1))} style={{background:'none',border:'1px solid #e5e7eb',borderRadius:'6px',padding:'6px 10px',cursor:'pointer'}}><ChevronLeft size={16} /></button>
@@ -220,7 +254,7 @@ export default function SemanaPage() {
                 </div>
                 <div>
                   <label className="label">Responsavel</label>
-                  <select className="select" value={form.responsavel_id} onChange={e => upd('responsavel_id', e.target.value)}>
+                  <select className="select" value={form.responsavel_id} onChange={e => upd('responsavel_id', e.target.value)} disabled={!isSup}>
                     <option value="">Nenhum</option>
                     {consultores.map((c: any) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
@@ -259,4 +293,3 @@ export default function SemanaPage() {
     </div>
   )
 }
-
